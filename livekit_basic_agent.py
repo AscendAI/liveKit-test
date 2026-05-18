@@ -809,9 +809,8 @@ class NoiseMixTTS(agents_tts.TTS):
 
 async def entrypoint(ctx: agents.JobContext):
     """Entry point for the agent."""
+    from livekit.agents.metrics import LLMMetrics, TTSMetrics, STTMetrics
 
-    # Configure the voice pipeline with the essentials
-    # Select LLM provider based on environment variable `LLM_CHOICE`.
     llm_choice = os.getenv("LLM_CHOICE", "gpt-4.1-mini")
     if llm_choice.lower().startswith("gemini"):
         session_llm = google.LLM(model=llm_choice)
@@ -840,20 +839,61 @@ async def entrypoint(ctx: agents.JobContext):
         print(f"[bg-noise] {bg_noise_path} not found, skipping background noise")
         tts_plugin = base_tts
 
+    stt = soniox.STT(api_key=os.getenv("SONIOX_API_KEY"))
+
+    # --- Metrics tracking ---
+    import json, time as _time
+    metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "metrics.jsonl")
+    totals = {"llm_in": 0, "llm_out": 0, "llm_cached": 0, "tts_chars": 0, "stt_seconds": 0.0, "turns": 0}
+
+    def _write_metrics(event: str):
+        record = {
+            "ts": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+            "room_id": ctx.room.name,
+            "event": event,
+            "turns": totals["turns"],
+            "llm_in_tokens": totals["llm_in"],
+            "llm_cached_tokens": totals["llm_cached"],
+            "llm_out_tokens": totals["llm_out"],
+            "tts_chars": totals["tts_chars"],
+            "stt_seconds": round(totals["stt_seconds"], 2),
+        }
+        try:
+            with open(metrics_path, "a") as f:
+                f.write(json.dumps(record) + "\n")
+        except Exception as e:
+            print(f"[metrics] write error: {e}")
+
+    def on_metrics(metrics):
+        if isinstance(metrics, LLMMetrics):
+            totals["llm_in"] += metrics.prompt_tokens
+            totals["llm_out"] += metrics.completion_tokens
+            totals["llm_cached"] += metrics.prompt_cached_tokens
+            totals["turns"] += 1
+            print(f"[metrics] turn {totals['turns']}: +{metrics.prompt_tokens}in ({metrics.prompt_cached_tokens} cached) / +{metrics.completion_tokens}out tokens")
+            _write_metrics("turn")
+        elif isinstance(metrics, TTSMetrics):
+            totals["tts_chars"] += metrics.characters_count
+        elif isinstance(metrics, STTMetrics):
+            totals["stt_seconds"] += metrics.audio_duration
+
+    session_llm.on("metrics_collected", on_metrics)
+    base_tts.on("metrics_collected", on_metrics)
+    stt.on("metrics_collected", on_metrics)
+    # ------------------------
+
     session = AgentSession(
-        stt=soniox.STT(api_key=os.getenv("SONIOX_API_KEY")),
+        stt=stt,
         llm=session_llm,
         tts=tts_plugin,
         vad=silero.VAD.load(),
     )
 
-    # Start the session
     await session.start(
         room=ctx.room,
         agent=Assistant()
     )
 
-    # Generate initial greeting
     await session.generate_reply(
         instructions="Greet the user warmly and ask how you can help."
     )
