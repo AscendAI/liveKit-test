@@ -11,7 +11,7 @@ from livekit import agents, rtc
 from livekit.agents import Agent, AgentSession, RunContext
 from livekit.agents import tts as agents_tts
 from livekit.agents.llm import function_tool
-from livekit.plugins import openai, soniox, silero, google
+from livekit.plugins import openai, soniox, silero, google, cartesia
 from datetime import datetime
 import numpy as np
 import os
@@ -819,13 +819,11 @@ async def entrypoint(ctx: agents.JobContext):
         session_llm = openai.LLM(model=llm_choice)
 
     # Build TTS, wrapping with noise mixer if the audio file exists
-    soniox_tts = soniox.TTS(
-        api_key=os.getenv("SONIOX_API_KEY"),
-        model="tts-rt-v1",
-        voice=os.getenv("SONIOX_VOICE", "Adrian"),
-        language=os.getenv("SONIOX_LANG", "bn"),
-        sample_rate=24000,
-        audio_format="pcm_s16le",
+    base_tts = cartesia.TTS(
+        api_key=os.getenv("CARTESIA_API_KEY"),
+        model=os.getenv("CARTESIA_MODEL", "sonic-3"),
+        voice=os.getenv("CARTESIA_VOICE", "2ba861ea-7cdc-43d1-8608-4045b5a41de5"),
+        language=os.getenv("CARTESIA_LANG", "en"),
     )
     bg_noise_path = os.getenv("BG_NOISE_WAV", "freesound_community-office-ambience-24734.mp3")
     if os.path.exists(bg_noise_path):
@@ -834,13 +832,13 @@ async def entrypoint(ctx: agents.JobContext):
             AudioSegment.from_file(bg_noise_path)
             .set_channels(1)
             .set_sample_width(2)
-            .set_frame_rate(soniox_tts.sample_rate)
+            .set_frame_rate(base_tts.sample_rate)
         )
         noise_samples = np.frombuffer(segment.raw_data, dtype=np.int16).copy()
-        tts_plugin = NoiseMixTTS(soniox_tts, noise_samples, volume=1)
+        tts_plugin = NoiseMixTTS(base_tts, noise_samples, volume=1)
     else:
         print(f"[bg-noise] {bg_noise_path} not found, skipping background noise")
-        tts_plugin = soniox_tts
+        tts_plugin = base_tts
 
     session = AgentSession(
         stt=soniox.STT(api_key=os.getenv("SONIOX_API_KEY")),

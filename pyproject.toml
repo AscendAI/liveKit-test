@@ -12,6 +12,7 @@ dependencies = [
     "livekit-plugins-turn-detector>=1.0.0",
     "python-dotenv>=1.0.0",
     "pydub>=0.25.1",
+    "livekit-plugins-cartesia>=1.2.14",
 ]
 
 [project.optional-dependencies]
