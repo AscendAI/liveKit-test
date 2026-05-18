@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from livekit import agents
 from livekit.agents import Agent, AgentSession, RunContext
 from livekit.agents.llm import function_tool
-from livekit.plugins import openai, deepgram, silero
+from livekit.plugins import openai, soniox, silero, google
 from datetime import datetime
 import os
 
@@ -21,7 +21,7 @@ class Assistant(Agent):
 
     def __init__(self):
         super().__init__(
-            instructions="""You are a helpful and friendly Airbnb voice assistant.
+            instructions="""You are a helpful and friendly Airbnb voice assistant. You mainly speak bangla and banglish.
             You can help users search for Airbnbs in different cities and book their stays.
             Keep your responses concise and natural, as if having a conversation."""
         )
@@ -177,10 +177,23 @@ async def entrypoint(ctx: agents.JobContext):
     """Entry point for the agent."""
 
     # Configure the voice pipeline with the essentials
+    # Select LLM provider based on environment variable `LLM_CHOICE`.
+    llm_choice = os.getenv("LLM_CHOICE", "gpt-4.1-mini")
+    if llm_choice.lower().startswith("gemini"):
+        session_llm = google.LLM(model=llm_choice)
+    else:
+        session_llm = openai.LLM(model=llm_choice)
+
     session = AgentSession(
-        stt=deepgram.STT(model="nova-2"),
-        llm=openai.LLM(model=os.getenv("LLM_CHOICE", "gpt-4.1-mini")),
-        tts=openai.TTS(voice="echo"),
+        stt=soniox.STT(api_key=os.getenv("SONIOX_API_KEY")),
+        llm=session_llm,
+        # tts=soniox.TTS(api_key=os.getenv("SONIOX_API_KEY")),
+            tts=soniox.TTS(api_key=os.getenv("SONIOX_API_KEY"),
+                  model="tts-rt-v1",
+                  voice=os.getenv("SONIOX_VOICE","Ruby"),
+                  language=os.getenv("SONIOX_LANG","bn"),
+                  sample_rate=24000,
+                  audio_format="pcm_s16le"),
         vad=silero.VAD.load(),
     )
 
