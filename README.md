@@ -62,7 +62,9 @@ uv run python livekit_mcp_agent.py download-files
 
 ```bash
 # Basic agent (minimal configuration)
-uv run python livekit_basic_agent.py console
+# uv run python livekit_basic_agent.py console
+
+/Users/abrar/.pyenv/versions/3.11.4/bin/python livekit_basic_agent.py console
 
 # MCP agent (with MCP server integration)
 uv run python livekit_mcp_agent.py console
