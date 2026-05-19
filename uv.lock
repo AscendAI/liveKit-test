@@ -1429,6 +1429,18 @@ wheels = [
 ]
 
 [[package]]
+name = "livekit-plugins-soniox"
+version = "1.2.14"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "livekit-agents" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b3/30/7809bd6f1d760afa074347e4d9790081c31a8b7d9798188b17d69c3198cc/livekit_plugins_soniox-1.2.14.tar.gz", hash = "sha256:5f25c89d4f4944cde19e71eba9d1816df16974f4412b78c2d103b439bda5869f", size = 7893, upload-time = "2025-10-01T17:56:02.613Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bf/96/056a1523d78f5836f666d6bfa7489d1f33416fbfe4bc3f1c0999c31298d8/livekit_plugins_soniox-1.2.14-py3-none-any.whl", hash = "sha256:f85a100884352c8d12d2b88aeefb0d5c9215cf24452f98628ca19839a5327ee3", size = 8441, upload-time = "2025-10-01T17:56:01.862Z" },
+]
+
+[[package]]
 name = "livekit-plugins-turn-detector"
 version = "1.2.14"
 source = { registry = "https://pypi.org/simple" }
@@ -1466,8 +1478,10 @@ dependencies = [
     { name = "livekit-agents", extra = ["mcp"] },
     { name = "livekit-plugins-cartesia" },
     { name = "livekit-plugins-deepgram" },
+    { name = "livekit-plugins-google" },
     { name = "livekit-plugins-openai" },
     { name = "livekit-plugins-silero" },
+    { name = "livekit-plugins-soniox" },
     { name = "livekit-plugins-turn-detector" },
     { name = "pydub" },
     { name = "python-dotenv" },
@@ -1521,12 +1535,14 @@ requires-dist = [
     { name = "livekit-plugins-deepgram", specifier = ">=1.0.0" },
     { name = "livekit-plugins-elevenlabs", marker = "extra == 'all'", specifier = ">=1.0.0" },
     { name = "livekit-plugins-elevenlabs", marker = "extra == 'tts'", specifier = ">=1.0.0" },
+    { name = "livekit-plugins-google", specifier = ">=1.2.14" },
     { name = "livekit-plugins-google", marker = "extra == 'all'", specifier = ">=1.0.0" },
     { name = "livekit-plugins-google", marker = "extra == 'llm'", specifier = ">=1.0.0" },
     { name = "livekit-plugins-groq", marker = "extra == 'all'", specifier = ">=1.0.0" },
     { name = "livekit-plugins-groq", marker = "extra == 'llm'", specifier = ">=1.0.0" },
     { name = "livekit-plugins-openai", specifier = ">=1.0.0" },
     { name = "livekit-plugins-silero", specifier = ">=1.0.0" },
+    { name = "livekit-plugins-soniox", specifier = ">=1.2.14" },
     { name = "livekit-plugins-turn-detector", specifier = ">=1.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "pydub", specifier = ">=0.25.1" },
