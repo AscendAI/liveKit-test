@@ -1,23 +1,25 @@
 #!/bin/bash
 # One-time SIP trunk + dispatch rule setup.
-# Run this AFTER docker-compose up and AFTER filling in trunk.json credentials.
+# Safe to re-run — reuses an existing trunk if one already exists.
 #
 # Prerequisites:
 #   brew install livekit-cli      (Mac)
 #   go install github.com/livekit/livekit-cli/cmd/lk@latest   (Linux)
 #
 # Usage:
-#   cd sip-setup
-#   bash setup.sh
+#   bash sip-setup/setup.sh
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR/.."
 
-# Load env from project root
+# Load only the three variables the lk CLI needs from .env
+# (avoids sourcing the whole file, which breaks on unicode comment characters)
 if [ -f "$ROOT_DIR/.env" ]; then
-  set -a; source "$ROOT_DIR/.env"; set +a
+  LIVEKIT_URL=$(grep '^LIVEKIT_URL=' "$ROOT_DIR/.env" | cut -d= -f2-)
+  LIVEKIT_API_KEY=$(grep '^LIVEKIT_API_KEY=' "$ROOT_DIR/.env" | cut -d= -f2-)
+  LIVEKIT_API_SECRET=$(grep '^LIVEKIT_API_SECRET=' "$ROOT_DIR/.env" | cut -d= -f2-)
 fi
 
 export LIVEKIT_URL="${LIVEKIT_URL:-ws://127.0.0.1:7880}"
@@ -32,28 +34,23 @@ fi
 echo "Using LiveKit at: $LIVEKIT_URL"
 echo ""
 
-# ── Step 1: Create inbound SIP trunk ─────────────────────────────────────────
-echo "==> Creating SIP inbound trunk from trunk.json ..."
-TRUNK_OUTPUT=$(lk sip inbound create "$SCRIPT_DIR/trunk.json")
-echo "$TRUNK_OUTPUT"
-echo ""
+# ── Step 1: Reuse existing trunk or create a new one ─────────────────────────
+EXISTING_TRUNK=$(lk sip inbound list 2>/dev/null | grep -oE 'ST_[A-Za-z0-9]+' | head -1 || true)
 
-# Extract trunk ID (works whether lk outputs JSON or plain text)
-TRUNK_ID=$(echo "$TRUNK_OUTPUT" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    # lk may return the trunk object or a wrapper
-    tid = data.get('sipTrunkId') or data.get('id') or ''
-    print(tid)
-except Exception:
-    pass
-" 2>/dev/null || true)
+if [ -n "$EXISTING_TRUNK" ]; then
+  echo "==> Found existing SIP trunk: $EXISTING_TRUNK — skipping creation."
+  TRUNK_ID="$EXISTING_TRUNK"
+else
+  echo "==> Creating SIP inbound trunk from trunk.json ..."
+  TRUNK_OUTPUT=$(lk sip inbound create "$SCRIPT_DIR/trunk.json")
+  echo "$TRUNK_OUTPUT"
+  TRUNK_ID=$(echo "$TRUNK_OUTPUT" | grep -oE 'ST_[A-Za-z0-9]+' | head -1)
 
-if [ -z "$TRUNK_ID" ]; then
-  echo "Could not auto-extract trunk ID."
-  echo -n "Please paste the sipTrunkId from the output above and press Enter: "
-  read -r TRUNK_ID
+  if [ -z "$TRUNK_ID" ]; then
+    echo "Could not auto-extract trunk ID."
+    echo -n "Please paste the sipTrunkId from the output above and press Enter: "
+    read -r TRUNK_ID
+  fi
 fi
 
 echo "Trunk ID: $TRUNK_ID"

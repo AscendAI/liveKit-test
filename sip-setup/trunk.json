@@ -1,5 +1,7 @@
 {
-  "name": "garibook-inbound",
-  "auth_username": "REPLACE_WITH_VOIP_SIP_USERNAME",
-  "auth_password": "REPLACE_WITH_VOIP_SIP_PASSWORD"
+  "trunk": {
+    "name": "garibook-inbound",
+    "authUsername": "garibooK-creds@creds.garibook1",
+    "authPassword": "garibooK-creds@creds.garibook1"
+  }
 }

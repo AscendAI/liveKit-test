@@ -131,13 +131,17 @@ Replace the placeholders with the Twilio credential list username and password y
 
 Save and close.
 
-### 4.2 — Export your LiveKit Cloud credentials
+### 4.2 — Load your credentials into the terminal
+
+The `setup.sh` script reads your `.env` file automatically, so you don't need to type credentials again. Just run these three lines once in your terminal so that manual `lk` commands (like `lk sip inbound list`) also work:
 
 ```bash
-export LIVEKIT_URL=wss://your-project-abc123.livekit.cloud
-export LIVEKIT_API_KEY=APIxxxxxxxxxxxxxxxxx
-export LIVEKIT_API_SECRET=your-cloud-api-secret
+export LIVEKIT_URL=$(grep '^LIVEKIT_URL=' .env | cut -d= -f2-)
+export LIVEKIT_API_KEY=$(grep '^LIVEKIT_API_KEY=' .env | cut -d= -f2-)
+export LIVEKIT_API_SECRET=$(grep '^LIVEKIT_API_SECRET=' .env | cut -d= -f2-)
 ```
+
+These pull the three values directly from `.env` without trying to parse the whole file.
 
 ### 4.3 — Run the setup script
 
