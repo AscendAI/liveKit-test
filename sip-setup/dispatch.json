@@ -1,10 +1,8 @@
 {
+  "trunkIds": ["REPLACE_WITH_TRUNK_ID"],
   "rule": {
-    "trunkIds": ["REPLACE_WITH_TRUNK_ID"],
-    "rule": {
-      "dispatchRuleIndividual": {
-        "roomPrefix": "call-"
-      }
+    "dispatchRuleIndividual": {
+      "roomPrefix": "call-"
     }
   }
 }

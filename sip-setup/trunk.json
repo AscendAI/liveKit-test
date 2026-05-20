@@ -1,7 +1,6 @@
 {
   "trunk": {
     "name": "garibook-inbound",
-    "authUsername": "garibooK-creds@creds.garibook1",
-    "authPassword": "garibooK-creds@creds.garibook1"
+    "numbers": ["+12088167436"]
   }
 }

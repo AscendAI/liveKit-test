@@ -57,12 +57,8 @@ echo "Trunk ID: $TRUNK_ID"
 echo ""
 
 # ── Step 2: Create dispatch rule ──────────────────────────────────────────────
-TMP=$(mktemp /tmp/dispatch-XXXX.json)
-sed "s/REPLACE_WITH_TRUNK_ID/$TRUNK_ID/g" "$SCRIPT_DIR/dispatch.json" > "$TMP"
-
 echo "==> Creating dispatch rule ..."
-lk sip dispatch create "$TMP"
-rm -f "$TMP"
+lk sip dispatch create --trunks "$TRUNK_ID" --individual "call-"
 
 echo ""
 echo "Done! Incoming calls to your VoIP number will now create a 'call-*' room"

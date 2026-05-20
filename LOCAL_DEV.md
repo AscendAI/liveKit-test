@@ -115,25 +115,23 @@ Leave all other keys (Soniox, Cartesia, OpenAI) as they are.
 
 ### 4.1 — Fill in your Twilio SIP credentials
 
-```bash
-nano sip-setup/trunk.json
-```
-
-Replace the placeholders with the Twilio credential list username and password you created in Step 3.2:
+Open `sip-setup/trunk.json`. The file must use this exact format (camelCase, wrapped in `"trunk"`):
 
 ```json
 {
-  "name": "garibook-inbound",
-  "auth_username": "your-twilio-credential-username",
-  "auth_password": "your-twilio-credential-password"
+  "trunk": {
+    "name": "garibook-inbound",
+    "authUsername": "your-twilio-credential-username",
+    "authPassword": "your-twilio-credential-password"
+  }
 }
 ```
 
-Save and close.
+Replace `authUsername` and `authPassword` with the values you created in Twilio's Credential List in Step 3.2.
 
 ### 4.2 — Load your credentials into the terminal
 
-The `setup.sh` script reads your `.env` file automatically, so you don't need to type credentials again. Just run these three lines once in your terminal so that manual `lk` commands (like `lk sip inbound list`) also work:
+Run these three lines once so the `lk` CLI and the setup script can reach LiveKit Cloud:
 
 ```bash
 export LIVEKIT_URL=$(grep '^LIVEKIT_URL=' .env | cut -d= -f2-)
@@ -141,24 +139,30 @@ export LIVEKIT_API_KEY=$(grep '^LIVEKIT_API_KEY=' .env | cut -d= -f2-)
 export LIVEKIT_API_SECRET=$(grep '^LIVEKIT_API_SECRET=' .env | cut -d= -f2-)
 ```
 
-These pull the three values directly from `.env` without trying to parse the whole file.
-
 ### 4.3 — Run the setup script
 
 ```bash
 bash sip-setup/setup.sh
 ```
 
-You should see:
+Expected output:
 
 ```
+Using LiveKit at: wss://your-project-abc123.livekit.cloud
+
 ==> Creating SIP inbound trunk from trunk.json ...
-{"sipTrunkId": "ST_xxxxxxxxxxxx", ...}
+SIPTrunkID: ST_xxxxxxxxxxxx
+
 Trunk ID: ST_xxxxxxxxxxxx
+
 ==> Creating dispatch rule ...
+SIPDispatchRuleID: SDR_xxxxxxxxxxxx
+
 Done! Incoming calls to your VoIP number will now create a 'call-*' room
 and your agent worker will answer automatically.
 ```
+
+If a trunk already exists from a previous run, the script will reuse it automatically instead of creating a duplicate.
 
 ### 4.4 — Verify
 
@@ -191,7 +195,7 @@ Leave this terminal open.
 
 Dial your Twilio number from any phone.
 
-In your terminal you should see the agent pick up:
+In your terminal you should see the agent pick up and process turns:
 
 ```
 [metrics] turn 1: +1823in (0 cached) / +42out tokens
@@ -204,48 +208,52 @@ Arafat will greet the caller in Bangla and the conversation begins.
 
 ## Troubleshooting
 
-### Agent starts but call never connects
+### Caller hears "incorrect number" or the call drops immediately
 
-Check that the dispatch rule was created and the trunk ID in it matches the inbound trunk:
+This means the call reached Twilio but couldn't reach LiveKit. Check all three:
+
+1. **Twilio Origination URI** — must be exactly `sip:sip.livekit.cloud` (no port, no `wss://`)
+2. **Number assigned to trunk** — go to Phone Numbers → Active Numbers → your number → Voice Configuration must show your SIP trunk, not a webhook
+3. **Dispatch rule exists** — run `lk sip dispatch list` and confirm there is one row
+
+### Dispatch list is empty
+
+Create the dispatch rule manually:
 
 ```bash
-lk sip inbound list
-lk sip dispatch list
+lk sip dispatch create --trunks ST_xxxxxxxxxxxx --individual "call-"
 ```
 
-If dispatch list is empty, re-run `bash sip-setup/setup.sh`.
+Replace `ST_xxxxxxxxxxxx` with your trunk ID from `lk sip inbound list`.
 
-### Caller hears ringing but then silence / call drops
+### Agent starts but call never connects / no metrics appear
 
-The Twilio Origination URI is wrong. Go back to **Elastic SIP Trunking → Trunks → your trunk → Origination** and confirm the URI is exactly:
+The dispatch rule trunk ID doesn't match your inbound trunk. Delete the dispatch rule and recreate it:
 
+```bash
+lk sip dispatch list                           # copy the SIPDispatchRuleID
+lk sip dispatch delete SDR_xxxxxxxxxxxx        # delete it
+lk sip dispatch create --trunks ST_xxxxxxxxxxxx --individual "call-"
 ```
-sip:sip.livekit.cloud
-```
 
-No port number, no extra path.
+### "Conflicting inbound SIP Trunks" error from setup.sh
+
+A trunk already exists. The script handles this automatically by reusing it. If you see this error running commands manually, just skip trunk creation and go straight to dispatch rule creation.
 
 ### Agent log shows "authentication failed"
 
-The `auth_username` or `auth_password` in `sip-setup/trunk.json` does not match what you created in Twilio's Credential List. Re-open the file, fix the values, and re-run the setup script:
+The `authUsername` or `authPassword` in `sip-setup/trunk.json` does not match the Twilio Credential List. Delete the old trunk and recreate:
 
 ```bash
-# Delete the old trunk first
-lk sip inbound list                          # copy the trunk ID
+lk sip inbound list                          # copy the SIPTrunkID
 lk sip inbound delete ST_xxxxxxxxxxxx        # delete it
-
-# Then re-run setup
+# Fix trunk.json, then:
 bash sip-setup/setup.sh
 ```
 
-### "Permission denied" or "unauthorized" from lk CLI
+### lk CLI says "unauthorized"
 
-Your exported `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` are wrong or not exported. Double-check with:
-
-```bash
-echo $LIVEKIT_URL
-echo $LIVEKIT_API_KEY
-```
+Your environment variables are not exported. Run the three export lines from Step 4.2 again — they reset when you open a new terminal.
 
 ---
 

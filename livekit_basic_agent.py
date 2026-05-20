@@ -811,19 +811,25 @@ async def entrypoint(ctx: agents.JobContext):
     """Entry point for the agent."""
     from livekit.agents.metrics import LLMMetrics, TTSMetrics, STTMetrics
 
+    await ctx.connect()
+
     llm_choice = os.getenv("LLM_CHOICE", "gpt-4.1-mini")
     if llm_choice.lower().startswith("gemini"):
         session_llm = google.LLM(model=llm_choice)
     else:
         session_llm = openai.LLM(model=llm_choice)
 
-    # Build TTS, wrapping with noise mixer if the audio file exists
-    base_tts = cartesia.TTS(
-        api_key=os.getenv("CARTESIA_API_KEY"),
-        model=os.getenv("CARTESIA_MODEL", "sonic-3"),
-        voice=os.getenv("CARTESIA_VOICE", "2ba861ea-7cdc-43d1-8608-4045b5a41de5"),
-        language=os.getenv("CARTESIA_LANG", "bn"),
-    )
+    # Build TTS — set TTS_PROVIDER=openai to use OpenAI TTS instead of Cartesia
+    tts_provider = os.getenv("TTS_PROVIDER", "cartesia").lower()
+    if tts_provider == "openai":
+        base_tts = openai.TTS(voice=os.getenv("OPENAI_TTS_VOICE", "alloy"))
+    else:
+        base_tts = cartesia.TTS(
+            api_key=os.getenv("CARTESIA_API_KEY"),
+            model=os.getenv("CARTESIA_MODEL", "sonic-3"),
+            voice=os.getenv("CARTESIA_VOICE", "2ba861ea-7cdc-43d1-8608-4045b5a41de5"),
+            language=os.getenv("CARTESIA_LANG", "bn"),
+        )
     bg_noise_path = os.getenv("BG_NOISE_WAV", "freesound_community-office-ambience-24734.mp3")
     if os.path.exists(bg_noise_path):
         from pydub import AudioSegment

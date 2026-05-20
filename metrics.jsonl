@@ -16,3 +16,13 @@
 {"ts": "2026-05-18T13:29:56Z", "room_id": "console", "event": "turn", "turns": 12, "llm_in_tokens": 101251, "llm_cached_tokens": 81472, "llm_out_tokens": 854, "tts_chars": 0, "stt_seconds": 42.24}
 {"ts": "2026-05-18T13:29:57Z", "room_id": "console", "event": "turn", "turns": 13, "llm_in_tokens": 109797, "llm_cached_tokens": 89620, "llm_out_tokens": 909, "tts_chars": 0, "stt_seconds": 43.44}
 {"ts": "2026-05-18T13:30:07Z", "room_id": "console", "event": "turn", "turns": 14, "llm_in_tokens": 118399, "llm_cached_tokens": 97760, "llm_out_tokens": 959, "tts_chars": 226, "stt_seconds": 50.4}
+{"ts": "2026-05-20T13:07:40Z", "room_id": "console", "event": "turn", "turns": 1, "llm_in_tokens": 8358, "llm_cached_tokens": 0, "llm_out_tokens": 44, "tts_chars": 0, "stt_seconds": 0.0}
+{"ts": "2026-05-20T13:07:44Z", "room_id": "console", "event": "turn", "turns": 2, "llm_in_tokens": 16751, "llm_cached_tokens": 8143, "llm_out_tokens": 71, "tts_chars": 0, "stt_seconds": 3.72}
+{"ts": "2026-05-20T13:07:50Z", "room_id": "console", "event": "turn", "turns": 3, "llm_in_tokens": 25177, "llm_cached_tokens": 16278, "llm_out_tokens": 94, "tts_chars": 0, "stt_seconds": 9.12}
+{"ts": "2026-05-20T13:08:39Z", "room_id": "console", "event": "turn", "turns": 4, "llm_in_tokens": 33639, "llm_cached_tokens": 24406, "llm_out_tokens": 133, "tts_chars": 0, "stt_seconds": 58.56}
+{"ts": "2026-05-20T13:09:12Z", "room_id": "console", "event": "turn", "turns": 1, "llm_in_tokens": 8358, "llm_cached_tokens": 8147, "llm_out_tokens": 44, "tts_chars": 0, "stt_seconds": 0.0}
+{"ts": "2026-05-20T13:09:18Z", "room_id": "console", "event": "turn", "turns": 2, "llm_in_tokens": 16752, "llm_cached_tokens": 16290, "llm_out_tokens": 84, "tts_chars": 0, "stt_seconds": 5.52}
+{"ts": "2026-05-20T13:11:17Z", "room_id": "console", "event": "turn", "turns": 1, "llm_in_tokens": 8358, "llm_cached_tokens": 0, "llm_out_tokens": 44, "tts_chars": 0, "stt_seconds": 0.0}
+{"ts": "2026-05-20T13:11:21Z", "room_id": "console", "event": "turn", "turns": 2, "llm_in_tokens": 16711, "llm_cached_tokens": 8147, "llm_out_tokens": 88, "tts_chars": 155, "stt_seconds": 3.6}
+{"ts": "2026-05-20T13:32:26Z", "room_id": "call-_+8801540062970_LL9evmSB6gyz", "event": "turn", "turns": 1, "llm_in_tokens": 8358, "llm_cached_tokens": 0, "llm_out_tokens": 44, "tts_chars": 0, "stt_seconds": 0.0}
+{"ts": "2026-05-20T13:32:48Z", "room_id": "call-_+8801540062970_LL9evmSB6gyz", "event": "turn", "turns": 2, "llm_in_tokens": 16759, "llm_cached_tokens": 8143, "llm_out_tokens": 66, "tts_chars": 155, "stt_seconds": 18.96}
