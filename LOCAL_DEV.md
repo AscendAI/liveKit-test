@@ -24,7 +24,7 @@ Caller dials Twilio number
         │
         ▼
 Twilio SIP Elastic Trunk
-        │  SIP → sip.livekit.cloud  (LiveKit's public endpoint)
+        │  SIP → YOUR-PROJECT-ID.sip.livekit.cloud  (project-specific URI)
         ▼
 LiveKit Cloud  (handles all public-facing SIP + WebRTC)
         │  dispatches job to any connected worker
@@ -60,6 +60,21 @@ Your Mac never needs a public IP. LiveKit Cloud is the only public-facing piece.
 
 ---
 
+## Step 1.5 — Find your project-specific SIP URI
+
+**This is the most important step.** LiveKit Cloud gives every project a unique SIP endpoint. You must use this URI — the generic `sip:sip.livekit.cloud` does not work.
+
+1. In your LiveKit Cloud project, go to **Telephony** in the left sidebar
+2. Click **SIP trunks**
+3. At the top of that page you will see your project SIP URI — it looks like:
+   ```
+   sip:4erbyiofrjv.sip.livekit.cloud
+   ```
+   (the prefix is your project ID, different for every project)
+4. **Copy this URI exactly** — you will need it in Step 3.2
+
+---
+
 ## Step 2 — Update your .env
 
 Open `.env` and replace the `LIVEKIT_*` lines with your cloud credentials:
@@ -88,18 +103,15 @@ Leave all other keys (Soniox, Cartesia, OpenAI) as they are.
 1. In the Twilio console go to **Elastic SIP Trunking → Trunks**
 2. Click **Create new SIP Trunk**
 3. Give it a name: `garibook-inbound`
-4. Under **Origination** → click **Add new Origination URI** and enter:
+4. Under **Origination** → click **Add new Origination URI** and enter your project-specific URI from Step 1.5:
    ```
-   sip:sip.livekit.cloud
+   sip:YOUR-PROJECT-ID.sip.livekit.cloud
    ```
+   For example: `sip:4erbyiofrjv.sip.livekit.cloud`
+
    Leave priority and weight at defaults. Save.
 
-5. Under **Authentication → Credential Lists** → click **Create new Credential List**
-   - Name it anything (e.g. `garibook-creds`)
-   - Add a **username** and **password** — write these down, you will need them in Step 4
-   - Save
-
-6. Save the SIP trunk
+5. Save the SIP trunk. No Credential List is needed — LiveKit authenticates calls by phone number.
 
 ### 3.3 — Assign your phone number to the trunk
 
@@ -113,21 +125,22 @@ Leave all other keys (Soniox, Cartesia, OpenAI) as they are.
 
 ## Step 4 — Register the SIP trunk with LiveKit Cloud
 
-### 4.1 — Fill in your Twilio SIP credentials
+### 4.1 — Fill in your phone number
 
-Open `sip-setup/trunk.json`. The file must use this exact format (camelCase, wrapped in `"trunk"`):
+Open `sip-setup/trunk.json`. The file must list your Twilio phone number in E.164 format:
 
 ```json
 {
   "trunk": {
     "name": "garibook-inbound",
-    "authUsername": "your-twilio-credential-username",
-    "authPassword": "your-twilio-credential-password"
+    "numbers": ["+12088167436"]
   }
 }
 ```
 
-Replace `authUsername` and `authPassword` with the values you created in Twilio's Credential List in Step 3.2.
+Replace `+12088167436` with the Twilio number you bought in Step 3.1.
+
+The `numbers` field is how LiveKit authenticates inbound calls — it accepts calls from your number and rejects anything else.
 
 ### 4.2 — Load your credentials into the terminal
 
@@ -138,6 +151,8 @@ export LIVEKIT_URL=$(grep '^LIVEKIT_URL=' .env | cut -d= -f2-)
 export LIVEKIT_API_KEY=$(grep '^LIVEKIT_API_KEY=' .env | cut -d= -f2-)
 export LIVEKIT_API_SECRET=$(grep '^LIVEKIT_API_SECRET=' .env | cut -d= -f2-)
 ```
+
+You only need this when you open a new terminal. The setup script reads `.env` directly, so this step is only needed if you want to run `lk` commands manually.
 
 ### 4.3 — Run the setup script
 
@@ -189,6 +204,12 @@ Starting worker... connected to wss://your-project-abc123.livekit.cloud
 
 Leave this terminal open.
 
+If Cartesia TTS is giving a 402 error (billing), run with OpenAI TTS instead:
+
+```bash
+TTS_PROVIDER=openai uv run python livekit_basic_agent.py dev
+```
+
 ---
 
 ## Step 6 — Test
@@ -212,9 +233,13 @@ Arafat will greet the caller in Bangla and the conversation begins.
 
 This means the call reached Twilio but couldn't reach LiveKit. Check all three:
 
-1. **Twilio Origination URI** — must be exactly `sip:sip.livekit.cloud` (no port, no `wss://`)
+1. **Twilio Origination URI** — must be your project-specific URI like `sip:4erbyiofrjv.sip.livekit.cloud` (NOT the generic `sip:sip.livekit.cloud`)
 2. **Number assigned to trunk** — go to Phone Numbers → Active Numbers → your number → Voice Configuration must show your SIP trunk, not a webhook
 3. **Dispatch rule exists** — run `lk sip dispatch list` and confirm there is one row
+
+### LiveKit Calls tab shows no calls / call just rings forever
+
+The most common cause is using the **wrong Origination URI** in Twilio. Every LiveKit Cloud project has a unique SIP endpoint. Go to your LiveKit Cloud project → **Telephony → SIP trunks** and copy the exact URI shown there (e.g. `sip:4erbyiofrjv.sip.livekit.cloud`). Update the Twilio trunk origination URI to match.
 
 ### Dispatch list is empty
 
@@ -240,20 +265,25 @@ lk sip dispatch create --trunks ST_xxxxxxxxxxxx --individual "call-"
 
 A trunk already exists. The script handles this automatically by reusing it. If you see this error running commands manually, just skip trunk creation and go straight to dispatch rule creation.
 
-### Agent log shows "authentication failed"
+### Agent receives job but never answers the call
 
-The `authUsername` or `authPassword` in `sip-setup/trunk.json` does not match the Twilio Credential List. Delete the old trunk and recreate:
+Make sure `await ctx.connect()` is at the top of the `entrypoint` function. Without it, the worker registers with LiveKit and receives the job but never joins the room, so the call just rings and times out.
+
+### Cartesia TTS returns 402 Payment Required
+
+Your Cartesia account has no credits. Either add credits at [play.cartesia.ai](https://play.cartesia.ai) or switch to OpenAI TTS:
 
 ```bash
-lk sip inbound list                          # copy the SIPTrunkID
-lk sip inbound delete ST_xxxxxxxxxxxx        # delete it
-# Fix trunk.json, then:
-bash sip-setup/setup.sh
+TTS_PROVIDER=openai uv run python livekit_basic_agent.py dev
 ```
 
 ### lk CLI says "unauthorized"
 
 Your environment variables are not exported. Run the three export lines from Step 4.2 again — they reset when you open a new terminal.
+
+### .env sourcing fails in zsh with parse errors
+
+Do not use `source .env` or `set -a; source .env; set +a` — `.env` files with Unicode characters in comments will break zsh. Use the grep-based extraction method shown in Step 4.2 instead.
 
 ---
 
@@ -266,7 +296,7 @@ The only differences between local dev and the self-hosted production setup are 
 | `LIVEKIT_URL` | `wss://your-project.livekit.cloud` | `ws://YOUR_SERVER_IP:7880` |
 | `LIVEKIT_API_KEY` | LiveKit Cloud key | Your own generated key |
 | `LIVEKIT_API_SECRET` | LiveKit Cloud secret | Your own generated secret |
-| Twilio Origination URI | `sip:sip.livekit.cloud` | `sip:YOUR_SERVER_IP:5060` |
+| Twilio Origination URI | `sip:YOUR-PROJECT-ID.sip.livekit.cloud` | `sip:YOUR_SERVER_IP:5060` |
 | How to start agent | `uv run python livekit_basic_agent.py dev` | `docker compose up -d` |
 
 When you are ready to go live, follow [DEPLOYMENT.md](DEPLOYMENT.md), swap those four values, and re-run `bash sip-setup/setup.sh` pointing at your server.
