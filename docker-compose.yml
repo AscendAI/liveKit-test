@@ -1,0 +1,45 @@
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    ports:
+      - "7880:7880"                        # HTTP/WS API
+      - "7881:7881"                        # WebRTC TCP fallback
+      - "50000-60000:50000-60000/udp"      # WebRTC media
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml
+    command: --config /etc/livekit.yaml
+    environment:
+      # Injects API key/secret without putting them in livekit.yaml
+      - LIVEKIT_KEYS=${LIVEKIT_API_KEY}:${LIVEKIT_API_SECRET}
+
+  livekit-sip:
+    image: livekit/sip:latest
+    restart: unless-stopped
+    # network_mode: host gives the SIP bridge direct access to host UDP ports
+    # (SIP 5060, RTP 10000-20000) — required for VoIP to work correctly.
+    # Linux only. On Mac/Windows Docker Desktop, replace with explicit port mappings:
+    #   ports:
+    #     - "5060:5060/udp"
+    #     - "5060:5060/tcp"
+    #     - "10000-20000:10000-20000/udp"
+    # and change ws_url in sip.yaml to: ws://host.docker.internal:7880
+    network_mode: host
+    volumes:
+      - ./sip.yaml:/etc/sip.yaml
+    command: --config /etc/sip.yaml
+    environment:
+      - LK_API_KEY=${LIVEKIT_API_KEY}
+      - LK_API_SECRET=${LIVEKIT_API_SECRET}
+    depends_on:
+      - livekit
+
+  agent:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Always use internal Docker network — overrides whatever is in .env
+      - LIVEKIT_URL=ws://livekit:7880
+    depends_on:
+      - livekit

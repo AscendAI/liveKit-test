@@ -1,0 +1,9 @@
+{
+  "name": "garibook-calls",
+  "trunk_ids": ["REPLACE_WITH_TRUNK_ID"],
+  "rule": {
+    "dispatchRuleIndividual": {
+      "roomPrefix": "call-"
+    }
+  }
+}

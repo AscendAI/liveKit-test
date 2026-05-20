@@ -1,0 +1,16 @@
+# LiveKit Server configuration
+# API key/secret are NOT stored here — they are injected via the
+# LIVEKIT_KEYS environment variable in docker-compose.yml
+
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  # Auto-detects the server's public IP for NAT traversal.
+  # Required so VoIP callers can reach the WebRTC media ports.
+  use_external_ip: true
+
+logging:
+  level: info

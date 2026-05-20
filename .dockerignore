@@ -10,3 +10,8 @@ livekit_voice_agent.egg-info/
 metrics.jsonl
 *.md
 CLAUDE.md
+# Server config files — used by livekit/livekit-sip containers, not the agent image
+livekit.yaml
+sip.yaml
+docker-compose.yml
+sip-setup/

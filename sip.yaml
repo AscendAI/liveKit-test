@@ -1,0 +1,17 @@
+# LiveKit SIP Bridge configuration
+# api_key / api_secret are NOT stored here — they are injected via
+# LK_API_KEY / LK_API_SECRET environment variables in docker-compose.yml
+
+# LiveKit server URL.
+# 127.0.0.1 works when running with network_mode: host on Linux (default).
+# On Mac/Windows Docker Desktop: change to ws://host.docker.internal:7880
+ws_url: ws://127.0.0.1:7880
+
+sip_port: 5060
+
+rtp:
+  port_range_start: 10000
+  port_range_end: 20000
+
+logging:
+  level: info

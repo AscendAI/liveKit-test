@@ -822,7 +822,7 @@ async def entrypoint(ctx: agents.JobContext):
         api_key=os.getenv("CARTESIA_API_KEY"),
         model=os.getenv("CARTESIA_MODEL", "sonic-3"),
         voice=os.getenv("CARTESIA_VOICE", "2ba861ea-7cdc-43d1-8608-4045b5a41de5"),
-        language=os.getenv("CARTESIA_LANG", "en"),
+        language=os.getenv("CARTESIA_LANG", "bn"),
     )
     bg_noise_path = os.getenv("BG_NOISE_WAV", "freesound_community-office-ambience-24734.mp3")
     if os.path.exists(bg_noise_path):

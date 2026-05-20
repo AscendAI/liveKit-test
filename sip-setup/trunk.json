@@ -1,0 +1,5 @@
+{
+  "name": "garibook-inbound",
+  "auth_username": "REPLACE_WITH_VOIP_SIP_USERNAME",
+  "auth_password": "REPLACE_WITH_VOIP_SIP_PASSWORD"
+}
