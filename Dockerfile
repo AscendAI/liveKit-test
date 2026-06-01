@@ -14,7 +14,7 @@ RUN pip install uv
 COPY pyproject.toml uv.lock ./
 
 # Install dependencies
-RUN uv sync --frozen --no-dev
+RUN uv sync --no-dev
 
 # Pre-download Silero VAD model to avoid cold-start delay
 RUN uv run python -c "from livekit.plugins import silero; silero.VAD.load()"
