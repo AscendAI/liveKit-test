@@ -1,6 +1,5 @@
-
+node_modules/
 .env
-.env.local
-.venv
-.pytest_cache
-__pycache__
+*.log
+dist/
+.DS_Store
