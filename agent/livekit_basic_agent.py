@@ -726,27 +726,42 @@ async def entrypoint(ctx: agents.JobContext):
     stt = soniox.STT(api_key=os.getenv("SONIOX_API_KEY"))
 
     # --- Metrics tracking ---
+    # Accumulate raw usage during the call. Costs are NOT computed here — the
+    # collected metrics (plus the models used) are POSTed to a webhook on call
+    # end, and the receiving service is responsible for any cost calculation.
     import json, time as _time
     metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "metrics.jsonl")
-    totals = {"llm_in": 0, "llm_out": 0, "llm_cached": 0, "tts_chars": 0, "stt_seconds": 0.0, "turns": 0}
+    started_at = _time.time()
+    totals = {"llm_in": 0, "llm_out": 0, "llm_cached": 0, "tts_chars": 0, "tts_seconds": 0.0, "stt_seconds": 0.0, "turns": 0}
 
-    def _write_metrics(event: str):
-        record = {
+    # Models / providers in use this session (sent with the metrics payload).
+    models = {
+        "llm_provider": "google" if llm_choice.lower().startswith("gemini") else "openai",
+        "llm_model": llm_choice,
+        "tts_provider": "cartesia",
+        "tts_model": os.getenv("CARTESIA_MODEL", "sonic-3"),
+        "tts_voice": os.getenv("CARTESIA_VOICE", "2ba861ea-7cdc-43d1-8608-4045b5a41de5"),
+        "tts_language": os.getenv("CARTESIA_LANG", "en"),
+        "stt_provider": "soniox",
+    }
+
+    def _build_payload(event: str) -> dict:
+        return {
             "ts": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
             "room_id": ctx.room.name,
             "event": event,
-            "turns": totals["turns"],
-            "llm_in_tokens": totals["llm_in"],
-            "llm_cached_tokens": totals["llm_cached"],
-            "llm_out_tokens": totals["llm_out"],
-            "tts_chars": totals["tts_chars"],
-            "stt_seconds": round(totals["stt_seconds"], 2),
+            "duration_seconds": round(_time.time() - started_at, 2),
+            "models": models,
+            "metrics": {
+                "turns": totals["turns"],
+                "llm_in_tokens": totals["llm_in"],
+                "llm_cached_tokens": totals["llm_cached"],
+                "llm_out_tokens": totals["llm_out"],
+                "tts_chars": totals["tts_chars"],
+                "tts_seconds": round(totals["tts_seconds"], 2),
+                "stt_seconds": round(totals["stt_seconds"], 2),
+            },
         }
-        try:
-            with open(metrics_path, "a") as f:
-                f.write(json.dumps(record) + "\n")
-        except Exception as e:
-            print(f"[metrics] write error: {e}")
 
     def on_metrics(metrics):
         if isinstance(metrics, LLMMetrics):
@@ -754,16 +769,48 @@ async def entrypoint(ctx: agents.JobContext):
             totals["llm_out"] += metrics.completion_tokens
             totals["llm_cached"] += metrics.prompt_cached_tokens
             totals["turns"] += 1
-            print(f"[metrics] turn {totals['turns']}: +{metrics.prompt_tokens}in ({metrics.prompt_cached_tokens} cached) / +{metrics.completion_tokens}out tokens")
-            _write_metrics("turn")
+            print(
+                f"[metrics] turn {totals['turns']}: +{metrics.prompt_tokens}in "
+                f"({metrics.prompt_cached_tokens} cached) / +{metrics.completion_tokens}out tokens"
+            )
         elif isinstance(metrics, TTSMetrics):
             totals["tts_chars"] += metrics.characters_count
+            totals["tts_seconds"] += metrics.audio_duration
         elif isinstance(metrics, STTMetrics):
             totals["stt_seconds"] += metrics.audio_duration
 
     session_llm.on("metrics_collected", on_metrics)
     base_tts.on("metrics_collected", on_metrics)
     stt.on("metrics_collected", on_metrics)
+
+    async def _on_shutdown():
+        payload = _build_payload("session_end")
+        # Always keep a local record.
+        try:
+            with open(metrics_path, "a") as f:
+                f.write(json.dumps(payload) + "\n")
+        except Exception as e:
+            print(f"[metrics] write error: {e}")
+
+        webhook_url = os.getenv("METRICS_WEBHOOK_URL")
+        if not webhook_url:
+            print("[metrics] METRICS_WEBHOOK_URL not set, skipping POST")
+            return
+        try:
+            import aiohttp
+            headers = {"Content-Type": "application/json"}
+            token = os.getenv("METRICS_WEBHOOK_TOKEN")
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as http:
+                async with http.post(webhook_url, json=payload, headers=headers) as resp:
+                    body = await resp.text()
+                    print(f"[metrics] POST {webhook_url} -> {resp.status} {body[:200]}")
+        except Exception as e:
+            print(f"[metrics] webhook POST failed: {e}")
+
+    ctx.add_shutdown_callback(_on_shutdown)
     # ------------------------
 
     session = AgentSession(
