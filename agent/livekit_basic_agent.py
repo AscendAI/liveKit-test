@@ -732,7 +732,15 @@ async def entrypoint(ctx: agents.JobContext):
     import json, time as _time
     metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "metrics.jsonl")
     started_at = _time.time()
-    totals = {"llm_in": 0, "llm_out": 0, "llm_cached": 0, "tts_chars": 0, "tts_seconds": 0.0, "stt_seconds": 0.0, "turns": 0}
+    totals = {"llm_in": 0, "llm_out": 0, "llm_cached": 0, "tts_chars": 0, "tts_seconds": 0.0, "stt_seconds": 0.0, "turns": 0,
+              "user_speaking_seconds": 0.0, "agent_speaking_seconds": 0.0}
+
+    # Wall-clock speaking timers, driven by AgentSession state-change events.
+    # Unlike tts_seconds/stt_seconds (which come from the plugins and reflect
+    # synthesized/processed audio), these measure how long each party was
+    # actually in the "speaking" state, so interrupted/cut-off speech is counted
+    # accurately. *_started holds the timestamp of an in-progress segment.
+    speaking = {"user_started": None, "agent_started": None}
 
     # Models / providers in use this session (sent with the metrics payload).
     models = {
@@ -746,11 +754,19 @@ async def entrypoint(ctx: agents.JobContext):
     }
 
     def _build_payload(event: str) -> dict:
+        now = _time.time()
+        # Include any segment still in progress at payload-build time.
+        user_speaking = totals["user_speaking_seconds"] + (
+            now - speaking["user_started"] if speaking["user_started"] is not None else 0.0
+        )
+        agent_speaking = totals["agent_speaking_seconds"] + (
+            now - speaking["agent_started"] if speaking["agent_started"] is not None else 0.0
+        )
         return {
             "ts": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
             "room_id": ctx.room.name,
             "event": event,
-            "duration_seconds": round(_time.time() - started_at, 2),
+            "duration_seconds": round(now - started_at, 2),
             "models": models,
             "metrics": {
                 "turns": totals["turns"],
@@ -760,6 +776,9 @@ async def entrypoint(ctx: agents.JobContext):
                 "tts_chars": totals["tts_chars"],
                 "tts_seconds": round(totals["tts_seconds"], 2),
                 "stt_seconds": round(totals["stt_seconds"], 2),
+                # Wall-clock time each party was actually speaking.
+                "user_speaking_seconds": round(user_speaking, 2),
+                "agent_speaking_seconds": round(agent_speaking, 2),
             },
         }
 
@@ -819,6 +838,24 @@ async def entrypoint(ctx: agents.JobContext):
         tts=tts_plugin,
         vad=silero.VAD.load(),
     )
+
+    @session.on("user_state_changed")
+    def _on_user_state(ev):
+        now = _time.time()
+        if ev.new_state == "speaking":
+            speaking["user_started"] = now
+        elif speaking["user_started"] is not None:
+            totals["user_speaking_seconds"] += now - speaking["user_started"]
+            speaking["user_started"] = None
+
+    @session.on("agent_state_changed")
+    def _on_agent_state(ev):
+        now = _time.time()
+        if ev.new_state == "speaking":
+            speaking["agent_started"] = now
+        elif speaking["agent_started"] is not None:
+            totals["agent_speaking_seconds"] += now - speaking["agent_started"]
+            speaking["agent_started"] = None
 
     await session.start(
         room=ctx.room,
