@@ -723,7 +723,12 @@ async def entrypoint(ctx: agents.JobContext):
         print(f"[bg-noise] {bg_noise_path} not found, skipping background noise")
         tts_plugin = base_tts
 
-    stt = soniox.STT(api_key=os.getenv("SONIOX_API_KEY"))
+    stt = soniox.STT(
+        api_key=os.getenv("SONIOX_API_KEY"),
+        params=soniox.STTOptions(
+            language_hints=["en", "bn"],
+        ),
+    )
 
     # --- Metrics tracking ---
     # Accumulate raw usage during the call. Costs are NOT computed here — the
