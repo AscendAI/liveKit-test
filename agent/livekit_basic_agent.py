@@ -730,7 +730,6 @@ async def entrypoint(ctx: agents.JobContext):
     # collected metrics (plus the models used) are POSTed to a webhook on call
     # end, and the receiving service is responsible for any cost calculation.
     import json, time as _time
-    metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "metrics.jsonl")
     started_at = _time.time()
     totals = {"llm_in": 0, "llm_out": 0, "llm_cached": 0, "tts_chars": 0, "tts_seconds": 0.0, "stt_seconds": 0.0, "turns": 0,
               "user_speaking_seconds": 0.0, "agent_speaking_seconds": 0.0}
@@ -804,12 +803,6 @@ async def entrypoint(ctx: agents.JobContext):
 
     async def _on_shutdown():
         payload = _build_payload("session_end")
-        # Always keep a local record.
-        try:
-            with open(metrics_path, "a") as f:
-                f.write(json.dumps(payload) + "\n")
-        except Exception as e:
-            print(f"[metrics] write error: {e}")
 
         webhook_url = os.getenv("METRICS_WEBHOOK_URL")
         if not webhook_url:
