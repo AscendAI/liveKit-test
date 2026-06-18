@@ -19,12 +19,10 @@ import os
 # Load environment variables
 load_dotenv(".env")
 
-class Assistant(Agent):
-    """Basic voice assistant with Airbnb booking capabilities."""
-
-    def __init__(self):
-        super().__init__(
-            instructions="""========================================================
+# Built-in fallback prompt (Garibook). Used when a call has no DB-backed voice
+# agent selected — keeps the worker backward-compatible. Per-company prompts now
+# come from the aag database via the config API (see _load_config below).
+GARIBOOK_INSTRUCTIONS = """========================================================
 GARIBOOK VOICE AGENT — ARAFAT
 SPOKEN LANGUAGE: BANGLA + ENGLISH CODE-SWITCHING
 ========================================================
@@ -412,11 +410,18 @@ Corporate:
 END
 ========================================================"""
 
+# The tool keys this worker knows how to register. Mirrors the catalog in the
+# aag admin UI (src/lib/voice-agents/tools.ts). DEFAULT_TOOLS is the set used by
+# the built-in fallback config.
+DEFAULT_TOOLS = [
+    "get_current_date_and_time",
+    "search_airbnbs",
+    "book_airbnb",
+    "addtag",
+]
 
-        )
-
-        # Mock Airbnb database
-        self.airbnbs = {
+# Demo listing catalog used by the search_airbnbs / book_airbnb tools.
+_AIRBNBS = {
             "san francisco": [
                 {
                     "id": "sf001",
@@ -481,16 +486,41 @@ END
             ],
         }
 
-        # Track bookings
-        self.bookings = []
 
-    @function_tool
+class VoiceAssistant(Agent):
+    """Voice assistant whose prompt and tool set are supplied at construction.
+
+    Tools are registered explicitly via the `tools=` argument (not auto-
+    discovered from decorated methods) so the enabled set can be controlled
+    per company from the database.
+    """
+
+    def __init__(self, instructions: str, enabled_tools, handover_webhook=None):
+        self.airbnbs = _AIRBNBS
+        self.bookings = []
+        self._handover_webhook = handover_webhook
+        super().__init__(
+            instructions=instructions,
+            tools=self._select_tools(enabled_tools),
+        )
+
+    def _select_tools(self, enabled_tools):
+        """Wrap the requested methods as function tools, preserving order."""
+        registry = {
+            "get_current_date_and_time": self.get_current_date_and_time,
+            "search_airbnbs": self.search_airbnbs,
+            "book_airbnb": self.book_airbnb,
+            "addtag": self.addtag,
+        }
+        selected = [function_tool(registry[k]) for k in (enabled_tools or []) if k in registry]
+        print(f"[tools] registered: {[k for k in (enabled_tools or []) if k in registry]}")
+        return selected
+
     async def get_current_date_and_time(self, context: RunContext) -> str:
         """Get the current date and time."""
         current_datetime = datetime.now().strftime("%B %d, %Y at %I:%M %p")
         return f"The current date and time is {current_datetime}"
 
-    @function_tool
     async def search_airbnbs(self, context: RunContext, city: str) -> str:
         """Search for available Airbnbs in a city.
 
@@ -514,7 +544,6 @@ END
 
         return result
 
-    @function_tool
     async def book_airbnb(self, context: RunContext, airbnb_id: str, guest_name: str, check_in_date: str, check_out_date: str) -> str:
         """Book an Airbnb.
 
@@ -560,7 +589,32 @@ END
         result += f"Nightly Rate: ${booking['total_price']}\n\n"
         result += f"You'll receive a confirmation email shortly. Have a great stay!"
 
-        return result        
+        return result
+
+    async def addtag(self, context: RunContext, reasonForStopping: str, message: str) -> str:
+        """Silently hand the conversation over to a human team.
+
+        Args:
+            reasonForStopping: One concise English sentence describing why the
+                call is being escalated.
+            message: A formatted English notification for the human team
+                (customer name, validated phone, email, a short problem
+                description, the next action, and priority).
+        """
+        print(f"[handover] {reasonForStopping}\n{message}")
+        if self._handover_webhook:
+            try:
+                import aiohttp
+                timeout = aiohttp.ClientTimeout(total=10)
+                async with aiohttp.ClientSession(timeout=timeout) as http:
+                    await http.post(
+                        self._handover_webhook,
+                        json={"reasonForStopping": reasonForStopping, "message": message},
+                    )
+            except Exception as e:
+                print(f"[handover] webhook POST failed: {e}")
+        return "Handover recorded. A human teammate will follow up shortly."
+
 
 def _mix_noise_frame(
     frame: rtc.AudioFrame, noise: np.ndarray, offset: int, volume: float
@@ -691,25 +745,112 @@ class NoiseMixTTS(agents_tts.TTS):
         await self._wrapped.aclose()
 
 
+def _default_config() -> dict:
+    """The built-in Garibook config, used when no DB-backed agent is selected."""
+    return {
+        "id": None,
+        "name": "garibook-default",
+        "systemPrompt": GARIBOOK_INSTRUCTIONS,
+        "greeting": "Greet the user warmly and ask how you can help.",
+        "enabledTools": DEFAULT_TOOLS,
+        "llm": {"model": os.getenv("LLM_CHOICE", "gpt-4.1-mini")},
+        "stt": {"provider": "soniox", "languageHints": ["en", "bn"]},
+        "tts": {
+            "provider": "cartesia",
+            "model": os.getenv("CARTESIA_MODEL", "sonic-3"),
+            "voice": os.getenv("CARTESIA_VOICE", "2ba861ea-7cdc-43d1-8608-4045b5a41de5"),
+            "language": os.getenv("CARTESIA_LANG", "en"),
+        },
+        "backgroundNoise": True,
+    }
+
+
+async def _load_config(ctx: agents.JobContext) -> dict:
+    """Resolve the voice agent config for this call.
+
+    Reads the voice agent id from the LiveKit room metadata (stamped there by
+    the aag token endpoint), then fetches the resolved config from the aag
+    config API. Falls back to the built-in Garibook config when there is no id
+    or the fetch fails, so rooms created without a selection still work.
+    """
+    default = _default_config()
+
+    raw_meta = getattr(ctx.room, "metadata", None) or ""
+    agent_id = None
+    if raw_meta:
+        try:
+            import json as _json
+            agent_id = (_json.loads(raw_meta) or {}).get("voiceAgentId")
+        except Exception as e:
+            print(f"[config] could not parse room metadata: {e}")
+
+    if not agent_id:
+        print("[config] no voiceAgentId in room metadata; using default config")
+        return default
+
+    base = os.getenv("AAG_CONFIG_BASE_URL")
+    secret = os.getenv("VOICE_AGENT_API_SECRET")
+    if not base or not secret:
+        print("[config] AAG_CONFIG_BASE_URL / VOICE_AGENT_API_SECRET not set; using default config")
+        return default
+
+    url = f"{base.rstrip('/')}/api/voice-agent/config/{agent_id}"
+    try:
+        import aiohttp
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as http:
+            async with http.get(url, headers={"Authorization": f"Bearer {secret}"}) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    print(f"[config] GET {url} -> {resp.status} {body[:200]}; using default config")
+                    return default
+                cfg = (await resp.json()).get("config") or {}
+    except Exception as e:
+        print(f"[config] fetch failed: {e}; using default config")
+        return default
+
+    merged = default.copy()
+    merged.update({
+        "id": cfg.get("id"),
+        "name": cfg.get("name", default["name"]),
+        "systemPrompt": cfg.get("systemPrompt") or default["systemPrompt"],
+        "greeting": cfg.get("greeting") or default["greeting"],
+        "enabledTools": cfg.get("enabledTools") if cfg.get("enabledTools") is not None else [],
+        "llm": cfg.get("llm") or default["llm"],
+        "stt": cfg.get("stt") or default["stt"],
+        "tts": cfg.get("tts") or default["tts"],
+        "backgroundNoise": bool(cfg.get("backgroundNoise", False)),
+    })
+    print(f"[config] loaded voice agent '{merged['name']}' ({merged['id']})")
+    return merged
+
+
 async def entrypoint(ctx: agents.JobContext):
     """Entry point for the agent."""
     from livekit.agents.metrics import LLMMetrics, TTSMetrics, STTMetrics
 
-    llm_choice = os.getenv("LLM_CHOICE", "gpt-4.1-mini")
+    # Connect first so room metadata (which carries the selected voice agent id)
+    # is available, then resolve the per-company config for this call.
+    await ctx.connect()
+    config = await _load_config(ctx)
+
+    llm_choice = config["llm"]["model"]
     if llm_choice.lower().startswith("gemini"):
         session_llm = google.LLM(model=llm_choice)
     else:
         session_llm = openai.LLM(model=llm_choice)
 
-    # Build TTS, wrapping with noise mixer if the audio file exists
+    # Build TTS from the resolved config, wrapping with the noise mixer when the
+    # agent enables background noise and the audio file is present.
+    tts_cfg = config["tts"]
     base_tts = cartesia.TTS(
         api_key=os.getenv("CARTESIA_API_KEY"),
-        model=os.getenv("CARTESIA_MODEL", "sonic-3"),
-        voice=os.getenv("CARTESIA_VOICE", "2ba861ea-7cdc-43d1-8608-4045b5a41de5"),
-        language=os.getenv("CARTESIA_LANG", "en"),
+        model=tts_cfg.get("model", "sonic-3"),
+        voice=tts_cfg.get("voice", "2ba861ea-7cdc-43d1-8608-4045b5a41de5"),
+        language=tts_cfg.get("language", "en"),
     )
     bg_noise_path = os.getenv("BG_NOISE_WAV", "freesound_community-office-ambience-24734.mp3")
-    if os.path.exists(bg_noise_path):
+    if config.get("backgroundNoise") and os.path.exists(bg_noise_path):
         from pydub import AudioSegment
         segment = (
             AudioSegment.from_file(bg_noise_path)
@@ -720,13 +861,14 @@ async def entrypoint(ctx: agents.JobContext):
         noise_samples = np.frombuffer(segment.raw_data, dtype=np.int16).copy()
         tts_plugin = NoiseMixTTS(base_tts, noise_samples, volume=1)
     else:
-        print(f"[bg-noise] {bg_noise_path} not found, skipping background noise")
+        if config.get("backgroundNoise"):
+            print(f"[bg-noise] {bg_noise_path} not found, skipping background noise")
         tts_plugin = base_tts
 
     stt = soniox.STT(
         api_key=os.getenv("SONIOX_API_KEY"),
         params=soniox.STTOptions(
-            language_hints=["en", "bn"],
+            language_hints=config["stt"].get("languageHints") or ["en"],
         ),
     )
 
@@ -748,12 +890,14 @@ async def entrypoint(ctx: agents.JobContext):
 
     # Models / providers in use this session (sent with the metrics payload).
     models = {
+        "voice_agent_id": config.get("id"),
+        "voice_agent_name": config.get("name"),
         "llm_provider": "google" if llm_choice.lower().startswith("gemini") else "openai",
         "llm_model": llm_choice,
         "tts_provider": "cartesia",
-        "tts_model": os.getenv("CARTESIA_MODEL", "sonic-3"),
-        "tts_voice": os.getenv("CARTESIA_VOICE", "2ba861ea-7cdc-43d1-8608-4045b5a41de5"),
-        "tts_language": os.getenv("CARTESIA_LANG", "en"),
+        "tts_model": tts_cfg.get("model", "sonic-3"),
+        "tts_voice": tts_cfg.get("voice", "2ba861ea-7cdc-43d1-8608-4045b5a41de5"),
+        "tts_language": tts_cfg.get("language", "en"),
         "stt_provider": "soniox",
     }
 
@@ -857,12 +1001,14 @@ async def entrypoint(ctx: agents.JobContext):
 
     await session.start(
         room=ctx.room,
-        agent=Assistant()
+        agent=VoiceAssistant(
+            instructions=config["systemPrompt"],
+            enabled_tools=config["enabledTools"],
+            handover_webhook=os.getenv("HANDOVER_WEBHOOK_URL"),
+        ),
     )
 
-    await session.generate_reply(
-        instructions="Greet the user warmly and ask how you can help."
-    )
+    await session.generate_reply(instructions=config["greeting"])
 
 if __name__ == "__main__":
     # Run the agent
