@@ -985,11 +985,17 @@ async def entrypoint(ctx: agents.JobContext):
     ctx.add_shutdown_callback(_on_shutdown)
     # ------------------------
 
+    # Reuse the VAD loaded once per worker process in prewarm() instead of
+    # loading it on every call (loading per-job adds a CPU spike at call start).
+    vad = ctx.proc.userdata.get("vad") if ctx.proc.userdata else None
+    if vad is None:
+        vad = silero.VAD.load()
+
     session = AgentSession(
         stt=stt,
         llm=session_llm,
         tts=tts_plugin,
-        vad=silero.VAD.load(),
+        vad=vad,
     )
 
     @session.on("user_state_changed")
@@ -1021,6 +1027,17 @@ async def entrypoint(ctx: agents.JobContext):
 
     await session.generate_reply(instructions=config["greeting"])
 
+def prewarm(proc: agents.JobProcess):
+    """Load heavy models once per worker process, before any job runs.
+
+    Keeps the Silero VAD out of the per-call hot path so calls don't take a CPU
+    hit (and a slow first turn) while the model loads.
+    """
+    proc.userdata["vad"] = silero.VAD.load()
+
+
 if __name__ == "__main__":
     # Run the agent
-    agents.cli.run_app(agents.WorkerOptions(entrypoint_fnc=entrypoint))
+    agents.cli.run_app(
+        agents.WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm)
+    )
