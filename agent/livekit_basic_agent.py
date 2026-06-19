@@ -487,41 +487,25 @@ _AIRBNBS = {
         }
 
 
-class VoiceAssistant(Agent):
-    """Voice assistant whose prompt and tool set are supplied at construction.
+def _build_tools(enabled_tools, handover_webhook=None):
+    """Build the requested function tools, preserving the requested order.
 
-    Tools are registered explicitly via the `tools=` argument (not auto-
-    discovered from decorated methods) so the enabled set can be controlled
-    per company from the database.
+    Tools are decorated *closures* (not bound methods): livekit's
+    `function_tool` sets an attribute on the callable, which works on a plain
+    function but raises AttributeError on a bound method. The closures also
+    capture their own per-call state (the demo bookings list, the handover
+    webhook), so each call gets a fresh, isolated tool set.
     """
+    bookings = []
 
-    def __init__(self, instructions: str, enabled_tools, handover_webhook=None):
-        self.airbnbs = _AIRBNBS
-        self.bookings = []
-        self._handover_webhook = handover_webhook
-        super().__init__(
-            instructions=instructions,
-            tools=self._select_tools(enabled_tools),
-        )
-
-    def _select_tools(self, enabled_tools):
-        """Wrap the requested methods as function tools, preserving order."""
-        registry = {
-            "get_current_date_and_time": self.get_current_date_and_time,
-            "search_airbnbs": self.search_airbnbs,
-            "book_airbnb": self.book_airbnb,
-            "addtag": self.addtag,
-        }
-        selected = [function_tool(registry[k]) for k in (enabled_tools or []) if k in registry]
-        print(f"[tools] registered: {[k for k in (enabled_tools or []) if k in registry]}")
-        return selected
-
-    async def get_current_date_and_time(self, context: RunContext) -> str:
+    @function_tool
+    async def get_current_date_and_time(context: RunContext) -> str:
         """Get the current date and time."""
         current_datetime = datetime.now().strftime("%B %d, %Y at %I:%M %p")
         return f"The current date and time is {current_datetime}"
 
-    async def search_airbnbs(self, context: RunContext, city: str) -> str:
+    @function_tool
+    async def search_airbnbs(context: RunContext, city: str) -> str:
         """Search for available Airbnbs in a city.
 
         Args:
@@ -529,10 +513,10 @@ class VoiceAssistant(Agent):
         """
         city_lower = city.lower()
 
-        if city_lower not in self.airbnbs:
+        if city_lower not in _AIRBNBS:
             return f"Sorry, I don't have any Airbnb listings for {city} at the moment. Available cities are: San Francisco, New York, and Los Angeles."
 
-        listings = self.airbnbs[city_lower]
+        listings = _AIRBNBS[city_lower]
         result = f"Found {len(listings)} Airbnbs in {city}:\n\n"
 
         for listing in listings:
@@ -544,7 +528,8 @@ class VoiceAssistant(Agent):
 
         return result
 
-    async def book_airbnb(self, context: RunContext, airbnb_id: str, guest_name: str, check_in_date: str, check_out_date: str) -> str:
+    @function_tool
+    async def book_airbnb(context: RunContext, airbnb_id: str, guest_name: str, check_in_date: str, check_out_date: str) -> str:
         """Book an Airbnb.
 
         Args:
@@ -555,7 +540,7 @@ class VoiceAssistant(Agent):
         """
         # Find the Airbnb
         airbnb = None
-        for city_listings in self.airbnbs.values():
+        for city_listings in _AIRBNBS.values():
             for listing in city_listings:
                 if listing['id'] == airbnb_id:
                     airbnb = listing
@@ -568,7 +553,7 @@ class VoiceAssistant(Agent):
 
         # Create booking
         booking = {
-            "confirmation_number": f"BK{len(self.bookings) + 1001}",
+            "confirmation_number": f"BK{len(bookings) + 1001}",
             "airbnb_name": airbnb['name'],
             "address": airbnb['address'],
             "guest_name": guest_name,
@@ -577,7 +562,7 @@ class VoiceAssistant(Agent):
             "total_price": airbnb['price'],
         }
 
-        self.bookings.append(booking)
+        bookings.append(booking)
 
         result = f"✓ Booking confirmed!\n\n"
         result += f"Confirmation Number: {booking['confirmation_number']}\n"
@@ -591,7 +576,8 @@ class VoiceAssistant(Agent):
 
         return result
 
-    async def addtag(self, context: RunContext, reasonForStopping: str, message: str) -> str:
+    @function_tool
+    async def addtag(context: RunContext, reasonForStopping: str, message: str) -> str:
         """Silently hand the conversation over to a human team.
 
         Args:
@@ -602,18 +588,43 @@ class VoiceAssistant(Agent):
                 description, the next action, and priority).
         """
         print(f"[handover] {reasonForStopping}\n{message}")
-        if self._handover_webhook:
+        if handover_webhook:
             try:
                 import aiohttp
                 timeout = aiohttp.ClientTimeout(total=10)
                 async with aiohttp.ClientSession(timeout=timeout) as http:
                     await http.post(
-                        self._handover_webhook,
+                        handover_webhook,
                         json={"reasonForStopping": reasonForStopping, "message": message},
                     )
             except Exception as e:
                 print(f"[handover] webhook POST failed: {e}")
         return "Handover recorded. A human teammate will follow up shortly."
+
+    registry = {
+        "get_current_date_and_time": get_current_date_and_time,
+        "search_airbnbs": search_airbnbs,
+        "book_airbnb": book_airbnb,
+        "addtag": addtag,
+    }
+    keys = [k for k in (enabled_tools or []) if k in registry]
+    print(f"[tools] registered: {keys}")
+    return [registry[k] for k in keys]
+
+
+class VoiceAssistant(Agent):
+    """Voice assistant whose prompt and tool set are supplied at construction.
+
+    Tools are passed explicitly via the `tools=` argument (built by
+    `_build_tools`) so the enabled set can be controlled per company from the
+    database, rather than auto-discovered from decorated methods.
+    """
+
+    def __init__(self, instructions: str, enabled_tools, handover_webhook=None):
+        super().__init__(
+            instructions=instructions,
+            tools=_build_tools(enabled_tools, handover_webhook),
+        )
 
 
 def _mix_noise_frame(
