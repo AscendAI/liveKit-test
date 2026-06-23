@@ -5,40 +5,19 @@ description = "Voice AI agent built with LiveKit Agents framework"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "livekit-agents[mcp]>=1.2.0",
-    "livekit-plugins-openai>=1.0.0",
-    "livekit-plugins-deepgram>=1.0.0",
-    "livekit-plugins-silero>=1.0.0",
-    "livekit-plugins-turn-detector>=1.0.0",
-    "livekit-plugins-soniox>=1.0.0",
-    "livekit-plugins-google>=1.0.0",
+    "livekit-agents[mcp]>=1.3.0",
+    "livekit-plugins-openai>=1.3.0",
+    "livekit-plugins-deepgram>=1.3.0",
+    "livekit-plugins-silero>=1.3.0",
+    "livekit-plugins-turn-detector>=1.3.0",
+    "livekit-plugins-soniox>=1.3.0",
+    "livekit-plugins-google>=1.3.0",
+    "livekit-plugins-cartesia>=1.3.0",
     "python-dotenv>=1.0.0",
     "pydub>=0.25.1",
-    "livekit-plugins-cartesia>=1.2.14",
-    "livekit-plugins-soniox>=1.2.14",
-    "livekit-plugins-google>=1.2.14",
 ]
 
 [project.optional-dependencies]
-# Additional TTS providers
-tts = [
-    "livekit-plugins-cartesia>=1.0.0",
-    "livekit-plugins-elevenlabs>=1.0.0"
-]
-
-# Additional LLM providers
-llm = [
-    "livekit-plugins-anthropic>=1.0.0",
-    "livekit-plugins-google>=1.0.0",
-    "livekit-plugins-groq>=1.0.0",
-]
-
-# Additional STT providers
-stt = [
-    "livekit-plugins-assemblyai>=1.0.0",
-    "livekit-plugins-azure>=1.0.0",
-]
-
 # Development dependencies
 dev = [
     "pytest>=7.0.0",
@@ -46,26 +25,17 @@ dev = [
     "pytest-cov>=4.0.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
-    "mypy>=1.0.0",
-]
-
-# All optional dependencies
-all = [
-    "livekit-plugins-cartesia>=1.0.0",
-    "livekit-plugins-elevenlabs>=1.0.0",
-    "livekit-plugins-anthropic>=1.0.0",
-    "livekit-plugins-google>=1.0.0",
-    "livekit-plugins-groq>=1.0.0",
-    "livekit-plugins-assemblyai>=1.0.0",
-    "livekit-plugins-azure>=1.0.0",
+    "mypy>=1.0.0"
 ]
 
 [tool.black]
 line-length = 100
-target-version = ["py39", "py310", "py311"]
+target-version = ["py311"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
 ignore = ["E501"]
 

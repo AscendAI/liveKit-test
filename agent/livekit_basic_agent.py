@@ -697,7 +697,21 @@ async def entrypoint(ctx: agents.JobContext):
 
     llm_choice = os.getenv("LLM_CHOICE", "gpt-4.1-mini")
     if llm_choice.lower().startswith("gemini"):
-        session_llm = google.LLM(model=llm_choice)
+        # google-genai 2.8.0's optional aiohttp transport calls
+        # StreamReader.readline(max_line_length=...), a kwarg aiohttp 3.12.x's
+        # readline() does not accept, which breaks streaming completions. Passing
+        # a custom httpx transport makes genai's _use_aiohttp() return False so it
+        # falls back to the working httpx streaming path.
+        import httpx
+        from google.genai import types as genai_types
+
+        gemini_http_options = genai_types.HttpOptions(
+            async_client_args={"transport": httpx.AsyncHTTPTransport()},
+        )
+        session_llm = google.LLM(model=llm_choice, http_options=gemini_http_options)
+    elif llm_choice.lower().startswith("deepseek"):
+        # DeepSeek is OpenAI-compatible; with_deepseek reads DEEPSEEK_API_KEY.
+        session_llm = openai.LLM.with_deepseek(model=llm_choice)
     else:
         session_llm = openai.LLM(model=llm_choice)
 
